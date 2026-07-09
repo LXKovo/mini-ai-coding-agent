@@ -6,12 +6,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 `min-cursor` 是一个极简的 AI 编码 Agent —— CLI 工具，使用 LLM 自主完成软件任务（创建项目、写代码、执行命令）。它实现了 ReAct（推理+行动）模式：模型决定调用哪个工具，工具执行后，结果反馈给模型进行下一步决策，直到任务完成或达到最大迭代次数。
 
+工具系统支持 **MCP 协议**，可动态连接外部工具服务器，将 Agent 的能力从 4 个本地工具扩展到任意 MCP 生态工具。
+
 ## 技术栈
 
 - **运行时**: Node.js（ESM — `"type": "module"`）
 - **包管理器**: pnpm（≥11.10.0）
 - **大模型**: DeepSeek V4 Flash，通过 `@langchain/openai` 调用（兼容 OpenAI 接口）
-- **工具系统**: `@langchain/core/tools` + Zod v4 schema 校验
+- **工具系统**: `@langchain/core/tools` + Zod v4 schema 校验 + MCP 动态工具
+- **MCP 集成**: `@langchain/mcp-adapters` + `@modelcontextprotocol/sdk`
 
 ## 常用命令
 
@@ -28,20 +31,23 @@ node src/main.js -f task.md                      # 从文件读取任务
 
 ```
 src/
-├── main.js                      # 入口：解析 CLI 参数 → 组装模型 + Agent → 运行
-├── config.js                    # 模型和 Agent 配置（支持环境变量覆盖）
+├── main.js                      # 入口：解析 CLI → MCP 初始化 → 组装模型 → 运行
+├── config.js                    # 模型/Agent/MCP 配置（环境变量可覆盖）
 ├── agent/
 │   └── ReactAgent.js            # ReAct 循环核心类 — 可复用，与 CLI 解耦
+├── mcp/
+│   └── client.js                # MCP 客户端封装 — 连接多服务器，工具合并去重
 ├── prompts/
 │   └── systemPrompt.js          # System prompt 模板（接受 cwd 参数）
 ├── tools/
-│   ├── index.js                 # 工具注册中心 — 新增工具在这里注册
+│   ├── index.js                 # 本地工具注册中心 — 新增本地工具在这里注册
 │   ├── readFileTool.js          # read_file：读取文件
 │   ├── writeFileTool.js         # write_file：写入文件（自动创建父目录）
 │   ├── listDirTool.js           # list_directory：列出目录
 │   └── execCommandTool.js       # exec_command：执行 shell 命令
 └── utils/
     └── logger.js                # 统一 chalk 日志工具
+mcp-servers.json                 # MCP 服务器配置文件（项目根目录）
 ```
 
 ### 核心设计要点
@@ -52,13 +58,44 @@ src/
 
 **可视化与执行分离**：工具文件是纯函数——只返回结果字符串，不做 console.log。所有终端输出统一通过 [src/utils/logger.js](src/utils/logger.js) 处理。新增工具时只需改工具实现和 [src/tools/index.js](src/tools/index.js) 注册，日志由 Agent 层统一管理。
 
-**配置**（[src/config.js](src/config.js)）：所有配置都支持环境变量覆盖：`MODEL_NAME`、`DEEPSEEK_API_KEY`、`BASE_URL`、`TIMEOUT`、`MAX_ITERATIONS`。默认值指向 DeepSeek API。
+**配置**（[src/config.js](src/config.js)）：所有配置都支持环境变量覆盖：`MODEL_NAME`、`DEEPSEEK_API_KEY`、`BASE_URL`、`TIMEOUT`、`MAX_ITERATIONS`。默认值指向 DeepSeek API。MCP 服务器配置从项目根目录的 `mcp-servers.json` 读取，也支持 `MCP_SERVERS_CONFIG` 环境变量指定自定义路径。
 
-### 新增工具的方法
+### MCP 工具系统（本地 + 动态）
+
+启动时，[src/main.js](src/main.js) 通过 `McpClientManager`（[src/mcp/client.js](src/mcp/client.js)）连接 MCP 服务器，将 MCP 工具与本地工具合并后传给 Agent：
+
+```
+mcp-servers.json → config.mcp.servers → McpClientManager.init()
+                                            ↓
+                         MultiServerMCPClient.initializeConnections()
+                                            ↓
+本地工具 ──→ getTools(localTools) ←── MCP 动态工具
+                  ↓
+         本地优先去重（重名则保留本地版本）
+                  ↓
+           model.bindTools(tools)
+```
+
+**McpClientManager** 的关键行为：
+- 连接失败不崩溃 —— 降级为仅本地工具
+- 工具同名处理 —— 本地工具优先，MCP 重名工具被过滤
+- 关闭时自动清理所有 MCP 连接（`main.js` 的 `finally` 块确保执行）
+
+### 新增本地工具的方法
 
 1. 创建 `src/tools/newTool.js` — 导出一个 `tool()` 实例，使用 Zod v4 schema 定义参数
 2. 在 [src/tools/index.js](src/tools/index.js) 的 `tools` 数组中注册
 3. （可选）在 `ReactAgent._summarizeResult()` 中为显示添加结果摘要逻辑
+
+### 新增 MCP 工具的方法
+
+1. 在 [mcp-servers.json](mcp-servers.json) 的 `mcpServers` 中添加服务器配置
+2. 如果服务器需要安装（非 npx），先 `pnpm add <mcp-server-package>`，然后用 `node ./node_modules/<path>/dist/index.js` 作为 command
+3. 重启 Agent 即可，无需改任何代码
+
+MCP 服务器支持两种传输方式：
+- **stdio**：`{ "command": "node", "args": [...], "env": {...} }` — 本地子进程通信
+- **streamableHttp**：`{ "transport": "streamableHttp", "url": "http://..." }` — 远程 HTTP
 
 ### exec_command 的关键规则
 

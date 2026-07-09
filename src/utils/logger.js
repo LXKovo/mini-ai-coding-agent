@@ -61,6 +61,11 @@ export const logger = {
     console.log(chalk.green.bold('\n✅ Agent 执行完成!\n'));
   },
 
+  /** 普通信息 */
+  log(msg) {
+    console.log(chalk.gray(msg));
+  },
+
   /** 错误 */
   error(msg) {
     console.error(chalk.red.bold(`\n❌ ${msg}`));

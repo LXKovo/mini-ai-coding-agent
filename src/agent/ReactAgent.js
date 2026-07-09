@@ -124,6 +124,10 @@ export class ReactAgent {
     if (toolName === 'exec_command') {
       return result.length > 60 ? result.slice(0, 60) + '...' : result;
     }
+    // MCP 工具等 — 通用摘要
+    if (typeof result === 'string') {
+      return result.length > 50 ? result.slice(0, 50) + '...' : result;
+    }
     return '';
   }
 }

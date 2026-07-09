@@ -1,7 +1,8 @@
 import { createModel, config } from './config.js';
 import { ReactAgent } from './agent/ReactAgent.js';
 import { createSystemPrompt } from './prompts/systemPrompt.js';
-import { tools } from './tools/index.js';
+import { tools as localTools } from './tools/index.js';
+import { initMcpClient } from './mcp/client.js';
 import { logger } from './utils/logger.js';
 import { readFile } from 'node:fs/promises';
 import { createInterface } from 'node:readline';
@@ -81,6 +82,17 @@ function interactivePrompt() {
 async function main() {
   const task = await parseTask();
 
+  // --- 初始化 MCP 客户端（连接外部工具服务器）---
+  const mcpManager = await initMcpClient({
+    servers: config.mcp.servers,
+    prefixToolName: config.mcp.prefixToolNameWithServerName,
+  });
+
+  // 合并本地工具 + MCP 工具
+  const tools = await mcpManager.getTools(localTools);
+  const toolNames = tools.map((t) => t.name).join(', ');
+  logger.log(`🔧 可用工具 (${tools.length}): ${toolNames}`);
+
   // 创建模型并绑定工具
   const model = createModel();
   const modelWithTools = model.bindTools(tools);
@@ -100,7 +112,9 @@ async function main() {
     await agent.run(task);
   } catch (e) {
     logger.error(`${e.message || e}`);
-    process.exit(1);
+  } finally {
+    // 清理
+    await mcpManager.close();
   }
 }
 
