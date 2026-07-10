@@ -1,2 +1,20 @@
 node_modules
 .env
+
+# Agent 运行产物（截图、创建的项目目录等）
+*.png
+*.jpg
+*.jpeg
+*.log
+react-todo-app
+
+# MCP 配置含敏感 token，不提交
+mcp-servers.json
+
+# 忽略所有 .md 文件（blog/notes 等个人知识库）
+*.md
+# 保留项目必需的
+!CLAUDE.md
+!README.md
+# 保留项目 skill 配置
+!.claude/skills/*.md

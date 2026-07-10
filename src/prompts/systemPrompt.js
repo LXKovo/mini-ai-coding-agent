@@ -1,17 +1,23 @@
 /**
  * System prompt 模板
- * 参数化当前工作目录，让 Agent 清楚自己在哪操作
+ * 参数化当前工作目录和工具列表，让 Agent 清楚自己在哪操作、有哪些工具可用
+ *
+ * @param {string} cwd - 当前工作目录
+ * @param {object} [opts]
+ * @param {string[]} [opts.toolNames=[]] - 可用工具名称列表
+ * @param {string} [opts.mcpResourcesContext=''] - MCP 资源上下文（由 buildResourcesContext 生成）
  */
-export function createSystemPrompt(cwd) {
-  return `你是一个项目管理助手，使用工具完成任务。
+export function createSystemPrompt(cwd, { toolNames = [], mcpResourcesContext = '' } = {}) {
+  const toolList = toolNames.length > 0
+    ? toolNames.map((name, i) => `${i + 1}. ${name}`).join('\n')
+    : '（工具列表将在运行时确定）';
+
+  let prompt = `你是一个项目管理助手，使用工具完成任务。
 
 当前工作目录: ${cwd}
 
 可用工具:
-1. read_file: 读取文件内容
-2. write_file: 写入文件（自动创建不存在的父目录）
-3. execute_command: 执行 shell 命令（支持 directoryPath 参数指定工作目录）
-4. list_directory: 列出目录下的文件和文件夹
+${toolList}
 
 重要规则 - execute_command：
   - directoryPath 参数会自动切换工作目录到指定路径
@@ -24,4 +30,11 @@ export function createSystemPrompt(cwd) {
 - 遇到工具执行失败时，分析错误原因并尝试替代方案
 - 使用 pnpm 作为包管理器
 - 回复要简洁，只说做了什么`;
+
+  // 追加 MCP 资源上下文
+  if (mcpResourcesContext) {
+    prompt += mcpResourcesContext;
+  }
+
+  return prompt;
 }

@@ -12,7 +12,9 @@ export const execCommandTool = tool(
                     cwd: directoryPath || process.cwd(),
                     env: process.env,
                     stdio: 'inherit',
-                    shell: true,
+                    shell: process.platform === 'win32'
+                        ? 'D:\\Git\\Git\\bin\\bash.exe'
+                        : true,
                 });
 
                 let errorMsg = '';

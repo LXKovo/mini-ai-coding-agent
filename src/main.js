@@ -2,7 +2,8 @@ import { createModel, config } from './config.js';
 import { ReactAgent } from './agent/ReactAgent.js';
 import { createSystemPrompt } from './prompts/systemPrompt.js';
 import { tools as localTools } from './tools/index.js';
-import { initMcpClient } from './mcp/client.js';
+import { createReadMcpResourceTool } from './tools/readMcpResourceTool.js';
+import { initMcpClient, buildResourcesContext } from './mcp/client.js';
 import { logger } from './utils/logger.js';
 import { readFile } from 'node:fs/promises';
 import { createInterface } from 'node:readline';
@@ -88,10 +89,19 @@ async function main() {
     prefixToolName: config.mcp.prefixToolNameWithServerName,
   });
 
+  // 创建按需读取 MCP 资源的工具 → 加入本地工具集
+  const readMcpResourceTool = createReadMcpResourceTool(mcpManager);
+  const allLocalTools = [...localTools, readMcpResourceTool];
+
   // 合并本地工具 + MCP 工具
-  const tools = await mcpManager.getTools(localTools);
+  const tools = await mcpManager.getTools(allLocalTools);
   const toolNames = tools.map((t) => t.name).join(', ');
   logger.log(`🔧 可用工具 (${tools.length}): ${toolNames}`);
+
+  // 从 MCP 服务器获取资源列表（仅名称+URI+描述，不预读内容）→ 注入 system prompt
+  const mcpResourcesContext = await buildResourcesContext(mcpManager, {
+    preRead: false,
+  });
 
   // 创建模型并绑定工具
   const model = createModel();
@@ -101,7 +111,10 @@ async function main() {
   const agent = new ReactAgent({
     model: modelWithTools,
     tools,
-    systemPrompt: createSystemPrompt(process.cwd()),
+    systemPrompt: createSystemPrompt(process.cwd(), {
+      toolNames: tools.map((t) => t.name),
+      mcpResourcesContext,
+    }),
     maxIterations: config.agent.maxIterations,
   });
 
