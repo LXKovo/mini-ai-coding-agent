@@ -1,5 +1,5 @@
 import { tool } from '@langchain/core/tools';
-import { z } from 'zod/v4';
+import { z } from 'zod';
 
 /**
  * 创建 read_mcp_resource 工具 — 让模型按需读取 MCP 资源内容

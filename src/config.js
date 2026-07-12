@@ -42,7 +42,10 @@ export const config = {
   },
   agent: {
     maxIterations: parseInt(process.env.MAX_ITERATIONS) || 15,
+    contextLimit: parseInt(process.env.CONTEXT_LIMIT) || 100_000,
   },
+  /** exec_command 使用的 shell — Windows 上需要指定 bash 路径 */
+  shell: process.env.SHELL_PATH || (process.platform === 'win32' ? 'D:\\Git\\Git\\bin\\bash.exe' : true),
   mcp: {
     /** MCP 服务器配置 — 来自 mcp-servers.json */
     servers: loadMcpServersConfig(),

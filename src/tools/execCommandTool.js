@@ -1,6 +1,7 @@
 import { tool } from '@langchain/core/tools'
 import { z } from 'zod'
 import { spawn } from 'node:child_process'
+import { config } from '../config.js'
 
 //执行命令工具(实时输出)
 export const execCommandTool = tool(
@@ -12,9 +13,7 @@ export const execCommandTool = tool(
                     cwd: directoryPath || process.cwd(),
                     env: process.env,
                     stdio: 'inherit',
-                    shell: process.platform === 'win32'
-                        ? 'D:\\Git\\Git\\bin\\bash.exe'
-                        : true,
+                    shell: config.shell,
                 });
 
                 let errorMsg = '';

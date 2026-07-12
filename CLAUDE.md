@@ -27,6 +27,22 @@ node src/main.js -f task.md                      # 从文件读取任务
 
 没有构建步骤、没有代码检查工具、没有测试套件。项目目前处于概念验证阶段。
 
+## 环境配置
+
+项目启动需要在 `.env` 文件中配置 DeepSeek API 密钥：
+
+```bash
+DEEPSEEK_API_KEY=sk-xxxxxxxxxxxxxxxx
+```
+
+可选覆盖项（均有默认值，详见 [src/config.js](src/config.js)）：
+- `BASE_URL` — API 端点（默认 `https://api.deepseek.com/v1`）
+- `MODEL_NAME` — 模型名称（默认 `deepseek-v4-flash`）
+- `MAX_ITERATIONS` — 最大迭代轮数（默认 15）
+- `TIMEOUT` — API 调用超时毫秒数（默认 60000）
+- `MCP_PREFIX_TOOLS` — 设为 `false` 禁用 MCP 工具名服务器前缀
+- `MCP_SERVERS_CONFIG` — 自定义 MCP 配置文件路径
+
 ## 项目架构
 
 ```
@@ -36,7 +52,7 @@ src/
 ├── agent/
 │   └── ReactAgent.js            # ReAct 循环核心类 — 可复用，与 CLI 解耦
 ├── mcp/
-│   └── client.js                # MCP 客户端封装 — 连接多服务器，工具合并去重
+│   └── client.js                # MCP 客户端封装 — 连接多服务器，工具合并去重 + 资源管理
 ├── prompts/
 │   └── systemPrompt.js          # System prompt 模板（接受 cwd 参数）
 ├── tools/
@@ -44,7 +60,8 @@ src/
 │   ├── readFileTool.js          # read_file：读取文件
 │   ├── writeFileTool.js         # write_file：写入文件（自动创建父目录）
 │   ├── listDirTool.js           # list_directory：列出目录
-│   └── execCommandTool.js       # exec_command：执行 shell 命令
+│   ├── execCommandTool.js       # exec_command：执行 shell 命令
+│   └── readMcpResourceTool.js   # read_mcp_resource：按需读取 MCP 资源内容
 └── utils/
     └── logger.js                # 统一 chalk 日志工具
 mcp-servers.json                 # MCP 服务器配置文件（项目根目录）
@@ -81,6 +98,24 @@ mcp-servers.json → config.mcp.servers → McpClientManager.init()
 - 工具同名处理 —— 本地工具优先，MCP 重名工具被过滤
 - 关闭时自动清理所有 MCP 连接（`main.js` 的 `finally` 块确保执行）
 
+### MCP 资源按需读取
+
+MCP 服务器除了提供工具，还可能提供**资源**（resources）—— 文档、schema、规范等参考内容。为避免无关资源占满上下文窗口，采用**列表优先、按需读取**策略：
+
+```
+McpClientManager.listResources()  →  只获取 {name, uri, description} 列表
+        ↓
+buildResourcesContext(mgr, { preRead: false })
+        ↓
+注入 system prompt 末尾 → 模型看到"有哪些资源可用"，但看不到内容
+        ↓
+模型判断某资源有用 → 调用 read_mcp_resource 工具（[src/tools/readMcpResourceTool.js](src/tools/readMcpResourceTool.js)）
+        ↓
+McpClientManager.readResource(serverName, uri) → 返回资源实际内容
+```
+
+`buildResourcesContext` 也支持 `preRead: true` 模式（预读所有文本资源），但当前默认关闭以节省上下文。`read_mcp_resource` 工具在 [src/main.js](src/main.js) 中动态创建并注入到本地工具集。
+
 ### 新增本地工具的方法
 
 1. 创建 `src/tools/newTool.js` — 导出一个 `tool()` 实例，使用 Zod v4 schema 定义参数
@@ -105,3 +140,16 @@ MCP 服务器支持两种传输方式：
 - ✅ 正确：`{ command: "pnpm install", directoryPath: "subdir" }`
 
 这条规则在 system prompt 中有强调，Agent 和工具设计也遵循此约定。
+
+**跨平台注意**：[src/tools/execCommandTool.js](src/tools/execCommandTool.js) 在 Windows 上的 shell 路径通过 `config.shell` 配置（默认 `D:\Git\Git\bin\bash.exe`），可通过 `SHELL_PATH` 环境变量覆盖。
+
+## 待改进项
+
+### 工具结果处理 — 策略注册机制
+
+当前 [src/utils/resultCompactor.js](src/utils/resultCompactor.js) 和 [ReactAgent._summarizeToolResult](src/agent/ReactAgent.js) 都在用硬编码的 `if toolName === 'xxx'` 分支处理不同的工具结果。这种做法有两个问题：
+
+1. **新增本地工具需要改多处**：不止要在 tools/index.js 注册，还要在 resultCompactor 和 _summarizeToolResult 添加分支
+2. **MCP 工具无法定制**：MCP 动态加载的工具只能走通用兜底策略
+
+**改进方向**：每个工具文件声明自己的 `compact` 和 `summarize` 处理器，注册到一个 `Map<toolName, processor>`。路由层只做 `registry.get(toolName) ?? genericFallback`，不管有多少工具都不需要改路由代码。MCP 工具自动走通用策略。

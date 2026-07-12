@@ -116,6 +116,7 @@ async function main() {
       mcpResourcesContext,
     }),
     maxIterations: config.agent.maxIterations,
+    contextLimit: config.agent.contextLimit,
   });
 
   // 启动
