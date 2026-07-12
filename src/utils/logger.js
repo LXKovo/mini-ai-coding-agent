@@ -9,29 +9,16 @@ export const logger = {
     console.log(chalk.magenta.bold(`\n━━━ ${msg} ━━━`));
   },
 
-  /** 模型请求调用工具时的概览 */
+  /** 模型请求调用工具时的概览 — 只显示工具名，不展开参数 */
   toolPlan(toolCalls) {
-    console.log(chalk.cyan.bold(`\n📋 模型请求调用 ${toolCalls.length} 个工具:`));
-    for (const tc of toolCalls) {
-      console.log(chalk.cyan(`  → ${tc.name}`));
-      if (tc.args) {
-        for (const [key, value] of Object.entries(tc.args)) {
-          const display = typeof value === 'string' && value.length > 80
-            ? value.slice(0, 80) + '...'
-            : value;
-          console.log(chalk.gray(`      ${key}: ${display}`));
-        }
-      }
-    }
+    const names = toolCalls.map((tc) => tc.name).join(', ');
+    console.log('');
+    console.log(chalk.cyan(`📋 调用: ${names}`));
   },
 
-  /** 工具执行中（开始执行时） */
-  toolStart(name, args) {
-    const shortArgs = {};
-    for (const [k, v] of Object.entries(args || {})) {
-      shortArgs[k] = typeof v === 'string' && v.length > 60 ? v.slice(0, 60) + '...' : v;
-    }
-    console.log(chalk.yellow(`  ⚡ ${name}`) + chalk.gray(` ${JSON.stringify(shortArgs)}`));
+  /** 工具执行中（开始执行时）— 极简，只标状态 */
+  toolStart(name, _args) {
+    process.stdout.write(chalk.yellow(`  ⚡ ${name} `));
   },
 
   /** 工具执行成功 */

@@ -3,6 +3,29 @@ import { logger } from '../utils/logger.js';
 import { config } from '../config.js';
 
 /**
+ * 把 Zod 校验错误转成人类可读的一句话
+ * 原始错误可能包含完整的 JSON ZodError，信息量巨大但对用户无用
+ */
+function _formatMcpError(error, servers) {
+  // Zod validation error — 配置字段不对（比如 transport 写成了 streamableHttp）
+  if (error.name === 'ZodError' || (error.message && error.message.includes('invalid'))) {
+    try {
+      const details = JSON.parse(error.message);
+      if (Array.isArray(details)) {
+        const names = details
+          .map((d) => d.path?.slice(-1)[0])
+          .filter(Boolean);
+        return `配置格式错误: ${names.map((n) => `"${n}"`).join('、')} — transport 只支持 "stdio" 或 "http"`;
+      }
+    } catch (_) { /* 不是 JSON，用原始信息 */ }
+  }
+
+  // 普通连接错误 — 截取前 120 字符
+  const msg = error.message || String(error);
+  return msg.length > 120 ? msg.slice(0, 120) + '...' : msg;
+}
+
+/**
  * MCP 客户端封装 — 管理多服务器连接，合并 MCP 工具与本地工具
  *
  * 用法:
@@ -49,7 +72,7 @@ export class McpClientManager {
       this.#connected = totalMcpTools > 0;
       logger.log(`[MCP] 共加载 ${totalMcpTools} 个 MCP 工具`);
     } catch (e) {
-      logger.warn(`[MCP] 连接失败: ${e.message}`);
+      logger.warn(`[MCP] 连接失败: ${_formatMcpError(e, servers)}`);
       this.#connected = false;
     }
 
