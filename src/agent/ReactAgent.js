@@ -7,6 +7,7 @@ import {
 import { logger } from '../utils/logger.js';
 import { countTokens } from '../utils/tokenCounter.js';
 import { compactToolResult, summarizeToolResult } from '../utils/resultCompactor.js';
+import { extractText } from '../utils/extractText.js';
 
 /**
  * ReAct Agent — 封装 Reasoning + Acting 循环
@@ -75,9 +76,10 @@ export class ReactAgent {
 
       // --- 模型返回文本 → 任务完成 ---
       if (!response.tool_calls || response.tool_calls.length === 0) {
-        logger.agentReply(response.content);
+        const finalText = extractText(response.content);
+        logger.agentReply(finalText);
         logger.agentDone();
-        return response.content;
+        return finalText;
       }
 
       // --- 模型请求调用工具 ---
@@ -131,7 +133,7 @@ export class ReactAgent {
     // 达到最大迭代次数
     logger.maxIterations(this.maxIterations);
     logger.agentDone();
-    return messages[messages.length - 1].content;
+    return extractText(messages[messages.length - 1].content);
   }
 
   /**
@@ -178,7 +180,7 @@ export class ReactAgent {
    * @returns {string|null}
    */
   _summarizeMessage(msg) {
-    const content = String(msg.content || '');
+    const content = extractText(msg.content);
 
     // AIMessage — 区分 "调用工具" 和 "纯文本回复"
     if (msg.tool_calls && msg.tool_calls.length > 0) {

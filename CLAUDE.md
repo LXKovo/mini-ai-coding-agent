@@ -153,3 +153,41 @@ MCP 服务器支持两种传输方式：
 2. **MCP 工具无法定制**：MCP 动态加载的工具只能走通用兜底策略
 
 **改进方向**：每个工具文件声明自己的 `compact` 和 `summarize` 处理器，注册到一个 `Map<toolName, processor>`。路由层只做 `registry.get(toolName) ?? genericFallback`，不管有多少工具都不需要改路由代码。MCP 工具自动走通用策略。
+
+### 流式输出（Streaming）— 模型回复逐 token 输出
+
+当前使用 `streaming: false` + `model.invoke()`，模型一次性生成完整回复再返回。切换到流式需要改两层：
+
+**待改动文件**：
+
+| 文件 | 改动 |
+|------|------|
+| [src/config.js](src/config.js) — `createModel()` | 加 `streaming: true` |
+| [src/agent/ReactAgent.js](src/agent/ReactAgent.js) — `run()` | `invoke()` → 手动流式循环 `model.stream()` |
+
+**核心技术难点**：`tool_call_chunks` 的增量拼装
+
+流式模式下工具调用参数是分段到达的，不能直接用，需要手动累积 delta 后 JSON.parse：
+
+```js
+// tool_call_chunks 是碎的增量，需要累加器拼装
+Chunk 1: { index: 0, id: "call_abc", name: "read_file" }
+Chunk 2: { index: 0, args: '{"filePath":' }          // ← 半截 JSON
+Chunk 3: { index: 0, args: '"package.json"}' }       // ← 后半截
+// 拼装后: { id: "call_abc", name: "read_file", args: '{"filePath":"package.json"}' }
+// JSON.parse(args) → { filePath: "package.json" }
+```
+
+**为什么暂不实施**：
+
+- ReAct Agent 的工具调用之间，模型纯文本通常只有 10-20 字，一闪而过，流式体验收益极低
+- 当前 logger 的工具级进度反馈（`🔧 调用: xxx → ✔ xxx (12ms)`）已经提供足够的执行可见性
+- 改造会引入 `tool_call_chunks` 拼装逻辑，增加维护复杂度
+
+**实施时机**：当以下条件之一成立时值得做：
+1. 模型回复变长（最终总结 > 200 字频繁出现）
+2. 新增对话/聊天模式（非 ReAct 的纯文本交互）
+3. 用户明确要求看到模型"思考过程"
+4. 换用支持 reasoning 的模型（思维链输出天然适合流式）
+
+**参考实现**：见上文讨论中的 `_streamModel()` 方法 —— 核心是分开处理 `chunk.content`（实时打印）和 `chunk.tool_call_chunks`（静默累积），工具执行循环保持不变。
