@@ -11,10 +11,11 @@ react-todo-app
 # MCP 配置含敏感 token，不提交
 mcp-servers.json
 
-# 忽略所有 .md 文件（blog/notes 等个人知识库）
+# 忽略所有 .md 文件（blog/notes/docs 等个人知识库）
 *.md
 # 保留项目必需的
 !CLAUDE.md
 !README.md
+!AGENTS.md
 # 保留项目 skill 配置
 !.claude/skills/*.md
