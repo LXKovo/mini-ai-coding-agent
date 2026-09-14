@@ -37,7 +37,9 @@ export function summarizeToolResult(toolName, result) {
     return match ? `${match[1]} 项` : '';
   }
   if (toolName === 'exec_command') {
-    return result.length > 60 ? result.slice(0, 60) + '...' : result;
+    // 结果现在是多行的（首行状态 + stdout/stderr 段），摘要只取首行
+    const firstLine = result.split('\n')[0];
+    return firstLine.length > 60 ? firstLine.slice(0, 60) + '...' : firstLine;
   }
   if (typeof result === 'string') {
     return result.length > 50 ? result.slice(0, 50) + '...' : result;

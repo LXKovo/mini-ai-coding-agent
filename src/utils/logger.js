@@ -31,6 +31,17 @@ export const logger = {
     console.log(chalk.red(`  ✖ ${name}`) + chalk.gray(` (${duration}ms)`) + chalk.red(` → ${reason}`));
   },
 
+  /**
+   * 子进程输出的实时透传
+   *
+   * exec_command 用 pipe 捕获输出（否则模型看不到命令结果），捕获到的内容
+   * 同时原样转发到这里，保证终端仍然能实时看到进度。不加任何 chalk 修饰
+   * ——这是命令自己的输出，不是我们的日志。
+   */
+  commandOutput(text) {
+    process.stdout.write(text);
+  },
+
   /** Agent 最终回复 */
   agentReply(content) {
     console.log(chalk.blue.bold('\n🤖 Agent 最终回复:'));

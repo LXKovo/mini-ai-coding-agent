@@ -115,7 +115,7 @@ min-cursor/
 | `read_file` | 读取文件 | 超过 500KB 时只读前 200 行；发给模型前还会截断为前 200 行 + 后 20 行 |
 | `write_file` | 写入文件 | 自动创建父目录，覆盖写入 |
 | `list_directory` | 列出目录 | 列出指定目录下的文件与文件夹（单层，不递归） |
-| `exec_command` | 执行命令 | 支持 `directoryPath` 切换工作目录，省略时使用当前目录 |
+| `exec_command` | 执行命令 | 支持 `directoryPath` 切换工作目录，省略时使用当前目录；返回 stdout / stderr / 退出码，超长自动截断 |
 | `read_mcp_resource` | 读取 MCP 资源 | 按需获取 MCP 服务器提供的文档/规范等参考内容 |
 
 ## MCP 工具扩展

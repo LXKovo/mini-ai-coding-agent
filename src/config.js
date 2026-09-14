@@ -121,6 +121,15 @@ export const config = {
   },
   /** exec_command 使用的 shell — 由 detectShell() 解析 */
   shell: detectShell(),
+  exec: {
+    /**
+     * 单条命令最多返回给模型多少字符（超出截断）
+     *
+     * 命令输出现在会随结果回到模型手里，没有上限的话，一次 `pnpm install`
+     * 的几千行日志就能吃掉大半个上下文窗口。
+     */
+    outputLimit: parseInt(process.env.COMMAND_OUTPUT_LIMIT) || 8_000,
+  },
   mcp: {
     /** MCP 服务器配置 — 来自 mcp-servers.json */
     servers: loadMcpServersConfig(),
