@@ -10,7 +10,7 @@ export const writeFileTool = tool(
             const dir = path.dirname(filePath);
             await fs.mkdir(dir, { recursive: true });
             await fs.writeFile(filePath, content, 'utf8');
-            return `成功写入${filePath} (${content.length} 字节)`;
+            return `成功写入${filePath} (${Buffer.byteLength(content, 'utf8')} 字节)`;
         }
         catch (err) {
             return `写入文件 ${filePath} 失败: ${err.message}`;

@@ -15,7 +15,7 @@
 - 📦 **MCP 资源按需读取** — 资源列表注入上下文但不占空间，模型按需调用 `read_mcp_resource` 获取内容
 - 🛡️ **四级上下文防护** — 80% 软压缩 → 95% 硬截断，防止 token 超限导致 API 调用失败
 - 🎯 **错误不崩溃** — 所有工具异常以消息形式返回给模型，模型可自行分析并重试
-- 🖥️ **跨平台** — Windows / macOS / Linux，Windows 下自动配置 Git Bash 路径
+- 🖥️ **跨平台** — Windows / macOS / Linux，Windows 下自动探测 Git Bash（`SHELL_PATH` 可覆盖）
 - 🔌 **零配置扩展** — 新增 MCP 工具只需编辑 `mcp-servers.json`，无需改任何代码
 
 ## 快速开始
@@ -112,10 +112,10 @@ min-cursor/
 
 | 工具名 | 功能 | 说明 |
 |--------|------|------|
-| `read_file` | 读取文件 | 支持指定行范围，大文件自动截断（前 200 行 + 后 20 行） |
+| `read_file` | 读取文件 | 超过 500KB 时只读前 200 行；发给模型前还会截断为前 200 行 + 后 20 行 |
 | `write_file` | 写入文件 | 自动创建父目录，覆盖写入 |
-| `list_directory` | 列出目录 | 递归展示目录结构，支持深度控制 |
-| `exec_command` | 执行命令 | 支持 `directoryPath` 切换工作目录，超时控制 |
+| `list_directory` | 列出目录 | 列出指定目录下的文件与文件夹（单层，不递归） |
+| `exec_command` | 执行命令 | 支持 `directoryPath` 切换工作目录，省略时使用当前目录 |
 | `read_mcp_resource` | 读取 MCP 资源 | 按需获取 MCP 服务器提供的文档/规范等参考内容 |
 
 ## MCP 工具扩展
@@ -128,7 +128,6 @@ min-cursor/
 |--------|----------|------|
 | **filesystem** | stdio | 搜索文件、目录树、编辑/移动文件、批量读取等 14 个工具 |
 | **chrome-devtools** | stdio | 浏览器自动化、性能分析、DOM 检查、网络监控 |
-| **gitee** | HTTP | Gitee 仓库管理、Issue、PR 等 200+ API |
 | **amap** (高德地图) | HTTP | 地理编码、路径规划、POI 搜索、天气查询 |
 
 ### 添加新的 MCP 服务器
@@ -154,6 +153,29 @@ min-cursor/
 - **stdio** — 本地子进程通信（`command` + `args`）
 - **HTTP** — 远程 HTTP 连接（`transport: "http"` + `url` + `headers`）
 
+### 密钥用环境变量注入
+
+`mcp-servers.json` 中任意字符串值都支持 `${ENV_VAR}` 占位符，加载时自动替换为环境变量，因此配置文件本身可以放心分享或提交：
+
+```json
+{
+  "mcpServers": {
+    "amap": {
+      "transport": "http",
+      "url": "https://mcp.amap.com/mcp?key=${AMAP_KEY}"
+    }
+  }
+}
+```
+
+真实密钥写在 `.env`（已被 `.gitignore` 排除）：
+
+```bash
+AMAP_KEY=你的高德Key
+```
+
+引用了未定义的环境变量时，启动日志会给出告警，并把该处替换为空字符串。
+
 ### 工具同名策略
 
 本地工具优先 —— 如果 MCP 工具与本地工具重名，保留本地版本，MCP 版本被过滤。这确保了核心工具的行为始终可控。
@@ -170,7 +192,7 @@ min-cursor/
 | `MAX_ITERATIONS` | `15` | 最大 ReAct 迭代轮数 |
 | `TIMEOUT` | `60000` | API 调用超时（毫秒） |
 | `CONTEXT_LIMIT` | `100000` | 上下文 token 上限 |
-| `SHELL_PATH` | Windows: `D:\Git\Git\bin\bash.exe` | 执行命令使用的 shell |
+| `SHELL_PATH` | Windows: 探测 Git Bash，找不到则用系统默认 shell | 执行命令使用的 shell |
 | `MCP_PREFIX_TOOLS` | `true` | 设为 `false` 禁用 MCP 工具名前缀 |
 | `MCP_SERVERS_CONFIG` | `mcp-servers.json` | 自定义 MCP 配置文件路径 |
 

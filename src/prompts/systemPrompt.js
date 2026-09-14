@@ -19,7 +19,7 @@ export function createSystemPrompt(cwd, { toolNames = [], mcpResourcesContext = 
 可用工具:
 ${toolList}
 
-重要规则 - execute_command：
+重要规则 - exec_command：
   - directoryPath 参数会自动切换工作目录到指定路径
   - 当使用 directoryPath 时，绝对不要在 command 中使用 cd
   - 错误示例: { command: "cd react-todo-app && pnpm install", directoryPath: "react-todo-app" }

@@ -40,8 +40,12 @@ DEEPSEEK_API_KEY=sk-xxxxxxxxxxxxxxxx
 - `MODEL_NAME` — 模型名称（默认 `deepseek-v4-flash`）
 - `MAX_ITERATIONS` — 最大迭代轮数（默认 15）
 - `TIMEOUT` — API 调用超时毫秒数（默认 60000）
+- `CONTEXT_LIMIT` — 上下文 token 上限（默认 100000）
+- `SHELL_PATH` — 执行命令使用的 shell（Windows 默认探测 Git Bash，探测不到则回退系统默认 shell）
 - `MCP_PREFIX_TOOLS` — 设为 `false` 禁用 MCP 工具名服务器前缀
 - `MCP_SERVERS_CONFIG` — 自定义 MCP 配置文件路径
+
+`mcp-servers.json` 中的任意字符串值支持 `${ENV_VAR}` 占位符（例如 `"url": "...?key=${AMAP_KEY}"`），加载时替换为环境变量，密钥不必明文写在配置文件里。
 
 ## 项目架构
 
@@ -75,7 +79,7 @@ mcp-servers.json                 # MCP 服务器配置文件（项目根目录�
 
 **可视化与执行分离**：工具文件是纯函数——只返回结果字符串，不做 console.log。所有终端输出统一通过 [src/utils/logger.js](src/utils/logger.js) 处理。新增工具时只需改工具实现和 [src/tools/index.js](src/tools/index.js) 注册，日志由 Agent 层统一管理。
 
-**配置**（[src/config.js](src/config.js)）：所有配置都支持环境变量覆盖：`MODEL_NAME`、`DEEPSEEK_API_KEY`、`BASE_URL`、`TIMEOUT`、`MAX_ITERATIONS`。默认值指向 DeepSeek API。MCP 服务器配置从项目根目录的 `mcp-servers.json` 读取，也支持 `MCP_SERVERS_CONFIG` 环境变量指定自定义路径。
+**配置**（[src/config.js](src/config.js)）：所有配置都支持环境变量覆盖：`MODEL_NAME`、`DEEPSEEK_API_KEY`、`BASE_URL`、`TIMEOUT`、`MAX_ITERATIONS`、`CONTEXT_LIMIT`、`SHELL_PATH`。默认值指向 DeepSeek API。MCP 服务器配置从项目根目录的 `mcp-servers.json` 读取，也支持 `MCP_SERVERS_CONFIG` 环境变量指定自定义路径；配置值中的 `${ENV_VAR}` 占位符在加载时替换为环境变量，用于避免密钥明文落盘。
 
 ### MCP 工具系统（本地 + 动态）
 
@@ -120,7 +124,7 @@ McpClientManager.readResource(serverName, uri) → 返回资源实际内容
 
 1. 创建 `src/tools/newTool.js` — 导出一个 `tool()` 实例，使用 Zod v4 schema 定义参数
 2. 在 [src/tools/index.js](src/tools/index.js) 的 `tools` 数组中注册
-3. （可选）在 `ReactAgent._summarizeResult()` 中为显示添加结果摘要逻辑
+3. （可选）在 [src/utils/resultCompactor.js](src/utils/resultCompactor.js) 的 `summarizeToolResult()` 中添加终端摘要逻辑
 
 ### 新增 MCP 工具的方法
 
@@ -128,9 +132,11 @@ McpClientManager.readResource(serverName, uri) → 返回资源实际内容
 2. 如果服务器需要安装（非 npx），先 `pnpm add <mcp-server-package>`，然后用 `node ./node_modules/<path>/dist/index.js` 作为 command
 3. 重启 Agent 即可，无需改任何代码
 
-MCP 服务器支持两种传输方式：
-- **stdio**：`{ "command": "node", "args": [...], "env": {...} }` — 本地子进程通信
-- **streamableHttp**：`{ "transport": "streamableHttp", "url": "http://..." }` — 远程 HTTP
+MCP 服务器支持两种传输方式（`@langchain/mcp-adapters` 的 `transport` 只接受 `"stdio"` / `"http"` / `"sse"`）：
+- **stdio**：`{ "transport": "stdio", "command": "node", "args": [...], "env": {...} }` — 本地子进程通信
+- **http**：`{ "transport": "http", "url": "http://...", "headers": {...} }` — 远程 HTTP
+
+配置值中的 `${ENV_VAR}` 占位符会在加载时替换为环境变量，token / key 请放在 `.env` 中而非配置文件里。
 
 ### exec_command 的关键规则
 
@@ -139,9 +145,9 @@ MCP 服务器支持两种传输方式：
 - ❌ 错误：`{ command: "cd subdir && pnpm install", directoryPath: "subdir" }`
 - ✅ 正确：`{ command: "pnpm install", directoryPath: "subdir" }`
 
-这条规则在 system prompt 中有强调，Agent 和工具设计也遵循此约定。
+这条规则在 system prompt 中有强调，Agent 和工具设计也遵循此约定。`directoryPath` 是可选参数，省略时使用当前工作目录。
 
-**跨平台注意**：[src/tools/execCommandTool.js](src/tools/execCommandTool.js) 在 Windows 上的 shell 路径通过 `config.shell` 配置（默认 `D:\Git\Git\bin\bash.exe`），可通过 `SHELL_PATH` 环境变量覆盖。
+**跨平台注意**：执行命令使用的 shell 由 [src/config.js](src/config.js) 的 `detectShell()` 决定 —— 优先 `SHELL_PATH` 环境变量，Windows 上探测常见的 Git Bash 安装位置（`ProgramFiles` / `ProgramFiles(x86)` / `LOCALAPPDATA` 及磁盘根目录下的非标准安装），都找不到则回退 `true`（交给系统默认 shell）。
 
 ## 待改进项
 
